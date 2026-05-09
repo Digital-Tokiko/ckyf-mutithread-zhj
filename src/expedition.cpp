@@ -49,34 +49,36 @@ namespace guild {
         for (auto &quest: quests) {
             switch (quest.type) {
                 case QuestType::kQuery:
-                    futures.emplace_back(pool_.dispatch([this,quest] {return registry_.query(quest.key); }));
+                    futures.emplace_back(pool_.dispatch([this,quest] { return registry_.query(quest.key); })
+                    );
                     break;
                 case QuestType::kRegister:
-                    futures.emplace_back(pool_.dispatch([this,quest] { registry_.register_adventurer(quest.key, quest.value.value(), quest.ttl); }));
+                    futures.emplace_back(pool_.dispatch([this,quest] {
+                        registry_.register_adventurer(quest.key, quest.value.value(), quest.ttl);
+                    }));
                     break;
                 case QuestType::kRemove:
-                    futures.emplace_back(pool_.dispatch([this,quest] {return registry_.dismiss(quest.key); }));
+                    futures.emplace_back(pool_.dispatch([this,quest] { return registry_.dismiss(quest.key); }));
                     break;
             }
         }
 
-        for (auto &future : futures) {
-            std::visit([&result](auto&& v) {
+        for (auto &future: futures) {
+            std::visit([&result](auto &&v) {
                 using T = std::decay_t<decltype(v)>;
-                if constexpr (std::is_same_v<T,std::future<std::optional<Attribute>> >) {
+                if constexpr (std::is_same_v<T, std::future<std::optional<Attribute> > >) {
                     auto res = v.get();
                     if (res.has_value()) result.emplace_back(guild::QuestResult::ok(res.value()));
                     else result.emplace_back(guild::QuestResult::not_found());
-                }
-                else if constexpr (std::is_same_v<T,std::future<void> >) {
+                } else if constexpr (std::is_same_v<T, std::future<void> >) {
+                    v.get();   //void也得写get，虽然不能返回值，但是阻塞到任务完成才是目的。
                     result.emplace_back(guild::QuestResult::ok());
-                }
-                else if constexpr (std::is_same_v<T,std::future<bool> >) {
+                } else if constexpr (std::is_same_v<T, std::future<bool> >) {
                     auto res = v.get();
                     if (res) result.emplace_back(guild::QuestResult::ok());
                     else result.emplace_back(guild::QuestResult::not_found());
                 }
-            },future);
+            }, future);
         }
 
         return result;
