@@ -32,7 +32,6 @@
 #include <iostream>
 
 namespace guild {
-
     using namespace std::chrono_literals;
 
     // ============================================================

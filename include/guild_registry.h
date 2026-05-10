@@ -39,7 +39,6 @@
 #include <chrono>
 
 namespace guild {
-
     using namespace std::chrono_literals;
 
     // ============================================================
@@ -240,8 +239,8 @@ namespace guild {
          * @param read_set  读取时记录的版本号（key -> version）
          * @return true 表示提交成功，false 表示版本冲突
          */
-        bool atomic_write(const std::map<std::string, std::optional<Attribute>> &write_set,
-                              const std::map<std::string, uint64_t> &read_set);
+        bool atomic_write(const std::map<std::string, std::optional<Attribute> > &write_set,
+                          const std::map<std::string, uint64_t> &read_set);
 
         // ---- 统计信息 ----
 

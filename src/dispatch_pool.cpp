@@ -26,8 +26,8 @@ namespace guild {
     void DispatchPool::shutdown() {
         // TODO: 设置关闭标志，通知 board_ 停止，等待所有 worker 线程退出
 
-        board_.close_board();
         shutdown_.store(true);
+        board_.close_board();
 
         for (auto &worker: workers_) {
             if (worker.joinable()) worker.join(); //判断必须得是joinable

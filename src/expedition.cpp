@@ -30,8 +30,9 @@ namespace guild {
         const std::string &key,
         std::function<void(std::optional<Attribute>)> callback) {
         // TODO: 实现带回调的异步查询（加分项）
-        (void) key;
-        (void) callback;
+        pool_.dispatch([&registry = registry_, key, cb = std::move(callback)] {
+            cb(registry.query(key));
+        });   //等一下所以这就这样吗*不过不阻塞调用方挺好。
     }
 
     // ============================================================

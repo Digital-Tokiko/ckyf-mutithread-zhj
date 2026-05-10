@@ -190,7 +190,14 @@ namespace guild {
         const std::string &key) const {
         // TODO [加分项]: 与 get() 类似，但同时返回版本号
         // 提示：加共享读锁，查找 key，返回 {value, version}；不存在时返回 {nullopt, 0}
-        (void) key;
+        std::shared_lock lock(mutex_);
+
+        auto result = data_.find(key);
+
+        if (result != data_.end() && !result->second.is_expired()) {
+            return {result->second.value, result->second.version};
+        }
+
         return {std::nullopt, 0};
     }
 
@@ -198,13 +205,23 @@ namespace guild {
         // TODO [加分项]: 不加锁的写入（调用方已持有该 Shard 的 unique_lock）
         // 重要：只更新 value 字段，然后将 version 递增。
         // 提示：data_.emplace(key, Record) 在 key 不存在时插入，存在时返回已有迭代器
-        (void) key;
-        (void) value;
+
+        auto res = data_.emplace(key, value);
+
+        if (!res.second) {
+            res.first->second.value = value;
+            res.first->second.version++;
+        }
     }
 
     bool Shard::remove_unlocked(const std::string &key) {
         // TODO [加分项]: 不加锁的删除（调用方已持有该 Shard 的 unique_lock）
-        (void) key;
+        auto res = data_.find(key);
+
+        if (res != data_.end()) {
+            data_.erase(res);
+            return true;
+        }
         return false;
     }
 
@@ -212,8 +229,12 @@ namespace guild {
         const std::string &key) {
         // TODO [加分项]: 带版本号的查询，同时更新统计计数器
         // 提示：调用 get_shard(key).get_versioned(key)，根据结果更新 hit/miss 计数
+        auto res = get_shard(key).get_versioned(key);
         stats_.query_count++;
-        (void) key;
+        if (res.first.has_value()) {
+            stats_.hit_count++;
+            return {res.first.value(), res.second};
+        }
         stats_.miss_count++;
         return {std::nullopt, 0};
     }
@@ -229,8 +250,31 @@ namespace guild {
         //      - 不等则说明有冲突，直接 return false（锁会在 unique_lock 析构时自动释放）
         //   4. 版本校验通过，应用 write_set 中的写操作
         //   5. return true
-        (void) write_set;
-        (void) read_set;
+        std::map<size_t, int> shards;
+        int size = shards_.size();
+        for (const auto &it: write_set) {
+            shards.insert({std::hash<std::string>{}(it.first) % size, 0});
+        }
+        for (const auto &it: read_set) {
+            shards.insert({std::hash<std::string>{}(it.first) % size, 0});
+        }
+
+        std::vector<std::unique_lock<std::shared_mutex> > locks;
+
+        locks.reserve(size);
+        for (const auto &shard: shards) {
+            locks.emplace_back(shards_[shard.first]->mutex());
+        }
+
+        for (const auto &it: read_set) {
+            if (it.second != shards_[std::hash<std::string>{}(it.first) % size]->data_.find(it.first)->second.version) return false;
+        } //query_versioned里面用了shared_lock欸。额。。我才看见还有友类。。
+
+        for (const auto &it: write_set) {
+            if (it.second.has_value()) get_shard(it.first).put_unlocked(it.first, it.second.value());
+            else get_shard(it.first).remove_unlocked(it.first);
+        }
+
         return true;
     }
 } // namespace guild

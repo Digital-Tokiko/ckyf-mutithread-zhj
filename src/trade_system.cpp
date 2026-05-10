@@ -12,11 +12,15 @@ namespace guild {
         //   2. 否则从 registry_ 读取
         //      - 基础实现：调用 registry_.query(key)
         //      - 加分项：调用 registry_.query_versioned(key)，将版本号存入 read_set_
-        auto try_result = write_set_.find(key);
 
+        auto try_result = write_set_.find(key);
         if (try_result == write_set_.end()) {
-            return registry_.query(key);
-        } else return try_result->second;
+            auto res = registry_.query_versioned(key);
+            read_set_.emplace(key, res.second);
+            return res.first;
+        } else {
+            return try_result->second;
+        }
     }
 
     void Transaction::put(const std::string &key, Attribute value) {
@@ -51,9 +55,9 @@ namespace guild {
         //   - 若返回 true：提交成功，设置 committed_ = true，返回 true
         //   - 若返回 false：版本冲突，不修改 committed_，返回 false（调用方可重试）
         //   这种方式使用 shard 级别细粒度锁，不同 shard 的事务可以真正并行
-        std::lock_guard<std::mutex> lock(tx_mutex_);
-        for (auto to_commit : write_set_) {
-            registry_.register_adventurer(to_commit.first, to_commit.second.value(),0s);
+
+        if (!registry_.atomic_write(write_set_, read_set_)) {
+            return false;
         }
 
         committed_ = true;
